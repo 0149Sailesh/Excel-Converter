@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Home Page</title>
+
+    <style type="text/css" media="screen">
+      body {
+        background-color: skyblue;
+        text-decoration-color: white;
+        font-size: 7em;
+      }
+    </style>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="./css/bootstrap.min.css" />
+  </head>
+
+  <body>
+    <div class="container" style="width: 45%">
+      <form id="uploadForm" enctype="multipart/form-data" method="post">
+        <label for="option1">Select </label>
+        <select id="option1" name="option1">
+          <option value="option1a">Option 1A</option>
+          <option value="option1b">Option 1B</option>
+          <option value="option1c">Option 1C</option>
+        </select>
+
+        <label for="option2">Select Option 2:</label>
+        <select id="option2" name="option2">
+          <option value="option2a">Option 2A</option>
+          <option value="option2b">Option 2B</option>
+          <option value="option2c">Option 2C</option>
+        </select>
+
+        <label for="file">Choose a file:</label>
+        <input type="file" id="file" name="userFile" />
+
+        <input
+          type="submit"
+          value="Upload File"
+          onclick="setTimeout(()=>{
+            document.getElementById('uploadForm').reset();
+        },100);"
+          name="upload"
+        />
+      </form>
+    </div>
+  </body>
+</html>
