@@ -2,8 +2,6 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from 'url';
 import fileUpload from "express-fileupload";
-import csvtojson from "csvtojson"
-import csvToJson from "convert-csv-to-json"
 import * as XLSX from 'xlsx';
 import * as fs from "fs";
 XLSX.set_fs(fs);
@@ -13,7 +11,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 
-console.log(__dirname)
+//console.log(__dirname)
 
 const app = express();
 
@@ -97,7 +95,7 @@ const calcHelper = (workbook, x) =>{
    let sum = 0;
    let count = 0;
    x = '@'+x; //@ has ASCI code 64
-
+   let registerArray = [];
    for(i = x.charCodeAt(1); ;i++){
     
         if(i>90){
@@ -111,10 +109,8 @@ const calcHelper = (workbook, x) =>{
     } else {
         cell = x[0] + String.fromCharCode(i) + x.substring(2);
     }
-    // console.log("x val: ",x)
-    // console.log("Cell accessed: ", cell)
+    
     if(!workbook[cell]){
-        //Don't forget both continue and break
         let checkEnd = checkHorizontal(workbook, x);
 
         if(checkEnd) continue;
@@ -124,14 +120,14 @@ const calcHelper = (workbook, x) =>{
 
     let hours = Number(time[0])*60;
     let minutes = Number(time[1]);
-
+    registerArray.push(hours+minutes);
     sum+= (hours+minutes);
     count++;
    }
 
    let avg = Math.floor(sum/count);
    
-   return [sum,avg];
+   return [sum,avg,registerArray];
 }
 
 const eachPerson = (workbook, x)=>{
@@ -145,32 +141,37 @@ const eachPerson = (workbook, x)=>{
 
     let nameExtracted = nameOfPerson.split("Name : ").pop().split(" CardNo").shift();
     let cardNo = nameOfPerson.split("CardNo : ").pop().split("Present").shift()
-
-    console.log(nameExtracted);
-    console.log(cardNo)
+    let softwarePresent = nameOfPerson.split("Present : ").pop().split(" Absent").shift();
+    let softwareAbsent = nameOfPerson.split("Absent : ").pop().split(" WO").shift();
+    cardNo = cardNo.substring(5);
+    //console.log(nameExtracted);
+    //console.log(cardNo)
    
     //Fetch in time parameter [sum, avg]
     let inTime = calcHelper(workbook, x);
     let inTimeAvg = convertToTime(Number(inTime[1]));
-    console.log("In time:", inTimeAvg);
+    //console.log("In time:", inTimeAvg);
 
     //Fetch out time parameters [sum, avg]
     let outTime = calcHelper(workbook, x[0]+(Number(x.substring(1))+1));
     let outTimeAvg = convertToTime(Number(outTime[1]));
-    console.log("Out time:", outTimeAvg);
+    //console.log("Out time:", outTimeAvg);
 
     //Calculate sum of all working days
     let sumOfAllDays = (Number(outTime[0]) - Number(inTime[0]));
     let sumInTime = convertToTime(sumOfAllDays);
-    console.log("Sum of working hours: ", sumInTime);
+    //console.log("Sum of working hours: ", sumInTime);
 
-    return [nameExtracted, inTimeAvg, outTimeAvg, sumInTime, cardNo]
+    let i;
+    
+        return [nameExtracted, inTimeAvg, outTimeAvg, sumInTime, cardNo, softwarePresent, softwareAbsent]
 
 }
 
 const itThruList = (workbook) =>{
     let firstCell = 'B7';
     let jsonData = [];
+    let metadata = workbook['A3'].v;
     
     let i;
     for(i=0;;i++){
@@ -189,32 +190,41 @@ const itThruList = (workbook) =>{
         let a = eachPerson(workbook, curCell);
 
         jsonData.push({
+            "S.No": String(i+1),
             "Name of Person": a[0],
             "Card No": a[4],
             "Avg In Time": a[1],
             "Avg out time": a[2],
-            "Present/Absent": a[3]
+            "Hours worked": a[3],
+            "Expected working hours": ((Number(a[5])+Number(a[6]))*8)+':00',
+            "Present": a[5],
+            "Absent": a[6]
         })
     }
-    return jsonData
+    return [jsonData,metadata]
 }
 
 app.get('/', (req, res)=>{
-    //var workbook = XLSX.readFile("PerformanceRegister-FACULTY-EEE.xlsx")
     res.render('index')
 })
 
 app.post('/',(req, res)=>{
 
     var workbook = XLSX.read(req.files.userFile.data);
-
-    let jsonData = itThruList(workbook.Sheets.Sheet1);
+    console.log(req.files.userFile)
+    let updatedFileName = "Converted "+req.files.userFile.name+'x';
+    let sheetData = itThruList(workbook.Sheets.Sheet1);
     
-    console.log(jsonData)
-
+    let jsonData = sheetData[0];
+    let title = sheetData[1];
+    console.log(title)
+    //console.log(jsonData)
     const newWb = XLSX.utils.book_new();
+    const datasheet = XLSX.utils.aoa_to_sheet([[title]]);
+    let header = [
+        "S.No", "Name of Person", "Card No", "Avg In Time", "Avg out time", "Hours worked", "Expected working hours", "Present", "Absent"]
     const fileName = "sample"
-    const datasheet = XLSX.utils.json_to_sheet(jsonData)
+    XLSX.utils.sheet_add_json(datasheet, jsonData,{header:header, origin:"A3"});
 
     XLSX.utils.book_append_sheet(newWb, datasheet, fileName.replace("/", ""))
 
@@ -225,7 +235,7 @@ app.post('/',(req, res)=>{
 
       res.setHeader(
         "Content-Disposition",
-        'attachment; filename="SheetJSNode.xlsx"'
+        'attachment; filename='+'"'+updatedFileName+'"'
       );
     
       res.setHeader("Content-Type", "application/vnd.ms-excel");
