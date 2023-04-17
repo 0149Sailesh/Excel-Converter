@@ -146,7 +146,7 @@ const calcPresentAbsent = (workbook, x) => {
     if (workbook[stat].v == "MIS") {
       absent++;
     }
-    if (workbook[stat].v == "P") {
+    if (workbook[stat].v == "P" || workbook[stat].v == "A") {
       const outTi = workbook[cell].v.split(":");
       const inTi = workbook[upper].v.split(":");
 
@@ -155,16 +155,14 @@ const calcPresentAbsent = (workbook, x) => {
 
       const workMinutes = outMinutes - inMinutes;
 
-      if (workMinutes >= 480) {
+      if (workMinutes > 420) {
         present++;
-      } else if (workMinutes >= 240 && workMinutes <= 420) {
+      } else if (workMinutes >= 180 && workMinutes <= 420) {
         half++;
       } else {
         absent += 1;
       }
     }
-
-    if (workbook[stat].v == "A") absent++;
   }
 
   return [present, absent, half];
@@ -323,24 +321,36 @@ const itThruList = (workbook) => {
     if (!workbook[curCell]) {
       let checkVerticalEnd = checkVertical(workbook, curCell);
 
-      if (checkVerticalEnd) continue;
-      else break;
+      if (checkVerticalEnd) {
+        let a = eachPerson(workbook, curCell);
+
+        jsonData.push({
+          "Name of Person": a[0],
+          "Card No": a[4],
+          "Avg In Time": a[1],
+          "Avg out time": a[2],
+          "Hours worked": a[3],
+          "Expected working hours": (Number(a[5]) + Number(a[6])) * 8 + ":00",
+          Present: a[5],
+          Absent: a[6],
+          "Half Days Present": a[7],
+        });
+      } else break;
+    } else {
+      let a = eachPerson(workbook, curCell);
+
+      jsonData.push({
+        "Name of Person": a[0],
+        "Card No": a[4],
+        "Avg In Time": a[1],
+        "Avg out time": a[2],
+        "Hours worked": a[3],
+        "Expected working hours": (Number(a[5]) + Number(a[6])) * 8 + ":00",
+        Present: a[5],
+        Absent: a[6],
+        "Half Days Present": a[7],
+      });
     }
-
-    let a = eachPerson(workbook, curCell);
-
-    jsonData.push({
-      "S.No": String(i + 1),
-      "Name of Person": a[0],
-      "Card No": a[4],
-      "Avg In Time": a[1],
-      "Avg out time": a[2],
-      "Hours worked": a[3],
-      "Expected working hours": (Number(a[5]) + Number(a[6])) * 8 + ":00",
-      Present: a[5],
-      Absent: a[6],
-      "Half Days Present": a[7],
-    });
   }
   return [jsonData, metadata];
 };
@@ -348,6 +358,15 @@ const itThruList = (workbook) => {
 app.get("/", (req, res) => {
   res.render("index");
 });
+
+function sortByProperty(property) {
+  return function (a, b) {
+    if (a[property] > b[property]) return 1;
+    else if (a[property] < b[property]) return -1;
+
+    return 0;
+  };
+}
 
 app.post("/", (req, res) => {
   var workbook = XLSX.read(req.files.userFile.data);
@@ -358,13 +377,11 @@ app.post("/", (req, res) => {
   let title = sheetData[1];
   //console.log(title)
   //console.log(jsonData)
-  console.log(req.body.upload);
+  //console.log(req.body.upload);
   if (req.body.upload == "Timestamp report") {
-    console.log("cacds");
     const newWb = XLSX.utils.book_new();
     const datasheet = XLSX.utils.aoa_to_sheet([[title]]);
     let header = [
-      "S.No",
       "Name of Person",
       "Card No",
       "Avg In Time",
@@ -376,6 +393,9 @@ app.post("/", (req, res) => {
       "Half Days Present",
     ];
     const fileName = "sample";
+
+    jsonData.sort(sortByProperty("Card No"));
+
     XLSX.utils.sheet_add_json(datasheet, jsonData, {
       header: header,
       origin: "A3",
@@ -401,7 +421,6 @@ app.post("/", (req, res) => {
     const datasheet = XLSX.utils.aoa_to_sheet([[title]]);
 
     let header = [
-      "S.No",
       "Staff Id",
       "Name",
       "t",
@@ -421,12 +440,13 @@ app.post("/", (req, res) => {
     let reportData = [];
     for (i = 0; i < jsonData.length; i++) {
       reportData.push({
-        "S.No": String(i + 1),
         "Staff Id": jsonData[i]["Card No"],
         Name: jsonData[i]["Name of Person"],
         t: jsonData[i]["Present"],
       });
     }
+
+    reportData.sort(sortByProperty("Staff Id"));
     XLSX.utils.sheet_add_json(datasheet, reportData, {
       header: header,
       origin: "A3",
