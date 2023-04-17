@@ -311,6 +311,7 @@ const itThruList = (workbook) => {
   let firstCell = "B7";
   let jsonData = [];
   let metadata = workbook["A3"].v;
+  let workingDays = 0;
 
   let i;
   for (i = 0; ; i++) {
@@ -335,6 +336,8 @@ const itThruList = (workbook) => {
           Absent: a[6],
           "Half Days Present": a[7],
         });
+
+        workingDays = a[5] + a[6] + a[7];
       } else break;
     } else {
       let a = eachPerson(workbook, curCell);
@@ -350,9 +353,11 @@ const itThruList = (workbook) => {
         Absent: a[6],
         "Half Days Present": a[7],
       });
+
+      workingDays = a[5] + a[6] + a[7];
     }
   }
-  return [jsonData, metadata];
+  return [jsonData, metadata, workingDays];
 };
 
 app.get("/", (req, res) => {
@@ -374,7 +379,7 @@ app.post("/", (req, res) => {
   let sheetData = itThruList(workbook.Sheets.Sheet1);
 
   let jsonData = sheetData[0];
-  let title = sheetData[1];
+  let title = sheetData[1] + ` (Total working days: ${sheetData[2]})`;
   //console.log(title)
   //console.log(jsonData)
   //console.log(req.body.upload);
