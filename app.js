@@ -167,6 +167,7 @@ const calcPresentAbsent = (workbook, x) => {
 
   return [present, absent, half];
 };
+
 const calcHelper = (workbook, x, fl) => {
   let i;
   let sum = 0;
@@ -219,11 +220,11 @@ const calcHelper = (workbook, x, fl) => {
 
         const workMinutes = outMinutes - inMinutes;
 
-        if (workMinutes >= 240 && workMinutes < 420) {
+        if (workMinutes >= 180 && workMinutes < 420) {
           offset += outMinutes;
           offsetCount++;
         }
-        if (workMinutes > 0 && workMinutes < 240) {
+        if (workMinutes > 0 && workMinutes < 180) {
           offset += outMinutes;
           offsetCount++;
         }
@@ -331,7 +332,8 @@ const itThruList = (workbook) => {
           "Avg In Time": a[1],
           "Avg out time": a[2],
           "Hours worked": a[3],
-          "Expected working hours": (Number(a[5]) + Number(a[6])) * 8 + ":00",
+          "Expected working hours":
+            (Number(a[5]) + Number(a[6]) + Number(a[7])) * 8 + ":00",
           Present: a[5],
           Absent: a[6],
           "Half Days Present": a[7],
@@ -348,7 +350,8 @@ const itThruList = (workbook) => {
         "Avg In Time": a[1],
         "Avg out time": a[2],
         "Hours worked": a[3],
-        "Expected working hours": (Number(a[5]) + Number(a[6])) * 8 + ":00",
+        "Expected working hours":
+          (Number(a[5]) + Number(a[6]) + Number(a[7])) * 8 + ":00",
         Present: a[5],
         Absent: a[6],
         "Half Days Present": a[7],
@@ -421,14 +424,14 @@ app.post("/", (req, res) => {
     res.setHeader("Content-Type", "application/vnd.ms-excel");
 
     return res.status(200).send(binaryWorkbook);
-  } else {
+  } else if (req.body.upload == "Attendance Report") {
     const newWb = XLSX.utils.book_new();
     const datasheet = XLSX.utils.aoa_to_sheet([[title]]);
 
     let header = [
       "Staff Id",
       "Name",
-      "t",
+      "Present",
       "CL",
       "EL",
       "ML",
@@ -447,7 +450,8 @@ app.post("/", (req, res) => {
       reportData.push({
         "Staff Id": jsonData[i]["Card No"],
         Name: jsonData[i]["Name of Person"],
-        t: jsonData[i]["Present"],
+        Present:
+          jsonData[i]["Present"] + 0.5 * jsonData[i]["Half Days Present"],
       });
     }
 
@@ -470,8 +474,53 @@ app.post("/", (req, res) => {
     res.setHeader("Content-Type", "application/vnd.ms-excel");
 
     return res.status(200).send(binaryWorkbook);
+  } else {
+    const newWb = XLSX.utils.book_new();
+    const datasheet = XLSX.utils.aoa_to_sheet([[title]]);
+
+    let header = ["SNo", "Roll No", "Name", "Present", "%", "Remarks", "%"];
+
+    const fileName = "sample";
+
+    let i;
+    let reportData = [];
+    for (i = 0; i < jsonData.length; i++) {
+      let percent =
+        jsonData[i]["Present"] /
+        (Number(jsonData[i]["Present"]) +
+          Number(jsonData[i]["Half Days Present"]) +
+          Number(jsonData[i]["Absent"]));
+      percent = percent.toFixed(2) * 100;
+      reportData.push({
+        SNo: i + 1,
+        "Roll No": jsonData[i]["Card No"],
+        Name: jsonData[i]["Name of Person"],
+        Present: jsonData[i]["Present"],
+        "%": percent,
+      });
+    }
+
+    XLSX.utils.sheet_add_json(datasheet, reportData, {
+      header: header,
+      origin: "A3",
+    });
+    XLSX.utils.book_append_sheet(newWb, datasheet, fileName.replace("/", ""));
+
+    const binaryWorkbook = XLSX.write(newWb, {
+      type: "buffer",
+      bookType: "xlsx",
+    });
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=" + '"' + updatedFileName + '"'
+    );
+
+    res.setHeader("Content-Type", "application/vnd.ms-excel");
+
+    return res.status(200).send(binaryWorkbook);
   }
 });
+
 app.listen(5000, () => {
   console.log("Example app is running on port 5000");
 });
