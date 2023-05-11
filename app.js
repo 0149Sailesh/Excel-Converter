@@ -98,7 +98,7 @@ const checkHorizontal = (workbook, x) => {
   //flag = false means the end
 };
 
-const calcPresentAbsent = (workbook, x) => {
+const calcPresentAbsent = (workbook, x, startDate, endDate) => {
   let i;
   let sum = 0;
   let count = 0;
@@ -110,6 +110,11 @@ const calcPresentAbsent = (workbook, x) => {
   let present = 0;
   let absent = 0;
   let half = 0;
+  let absentDays = [];
+  let presentDays = [];
+  let woDays = [];
+  let halfDays = [];
+
   for (i = x.charCodeAt(1); ; i++) {
     if (i > 90) {
       i = 64;
@@ -134,16 +139,25 @@ const calcPresentAbsent = (workbook, x) => {
 
       if (checkEnd) {
         if (workbook[stat]) {
-          if (workbook[stat].v == "A") absent++;
+          if (workbook[stat].v == "A") {
+            absent++;
+            absentDays.push(startDate);
+          }
           if (workbook[stat].v == "MIS") {
+            absentDays.push(startDate);
             absent++;
           }
+          if (workbook[stat].v == "WO") {
+            woDays.push(startDate);
+          }
         }
+        startDate++;
         continue;
       } else break;
     }
 
     if (workbook[stat].v == "MIS") {
+      absentDays.push(startDate);
       absent++;
     }
     if (workbook[stat].v == "P" || workbook[stat].v == "A") {
@@ -156,16 +170,20 @@ const calcPresentAbsent = (workbook, x) => {
       const workMinutes = outMinutes - inMinutes;
 
       if (workMinutes > 420) {
+        presentDays.push(startDate);
         present++;
       } else if (workMinutes >= 180 && workMinutes <= 420) {
+        halfDays.push(startDate);
         half++;
       } else {
+        absentDays.push(startDate);
         absent += 1;
       }
     }
+    startDate++;
   }
 
-  return [present, absent, half];
+  return [present, absent, half, absentDays, presentDays, halfDays, woDays];
 };
 
 const calcHelper = (workbook, x, fl) => {
@@ -246,7 +264,7 @@ const calcHelper = (workbook, x, fl) => {
   return [sum, avg, registerArray];
 };
 
-const eachPerson = (workbook, x) => {
+const eachPerson = (workbook, x, startDate, endDate) => {
   var nameOfPerson;
   //Get name of Person
   if (x == "B7") {
@@ -293,7 +311,9 @@ const eachPerson = (workbook, x) => {
   //Calculate absence and presence
   let register = calcPresentAbsent(
     workbook,
-    x[0] + (Number(x.substring(1)) + 1)
+    x[0] + (Number(x.substring(1)) + 1),
+    startDate,
+    endDate
   );
 
   return [
@@ -305,6 +325,10 @@ const eachPerson = (workbook, x) => {
     register[0],
     register[1],
     register[2],
+    register[3],
+    register[4],
+    register[5],
+    register[6],
   ];
 };
 
@@ -313,6 +337,12 @@ const itThruList = (workbook) => {
   let jsonData = [];
   let metadata = workbook["A3"].v;
   let workingDays = 0;
+  let startDate = Number(metadata.split("from ").pop().split("-").shift());
+
+  let endDate = Number(metadata.split("to ").pop().split("-").shift());
+
+  console.log("start date", startDate);
+  console.log("End Date", endDate);
 
   let i;
   for (i = 0; ; i++) {
@@ -324,7 +354,7 @@ const itThruList = (workbook) => {
       let checkVerticalEnd = checkVertical(workbook, curCell);
 
       if (checkVerticalEnd) {
-        let a = eachPerson(workbook, curCell);
+        let a = eachPerson(workbook, curCell, startDate, endDate);
 
         jsonData.push({
           "Name of Person": a[0],
@@ -337,12 +367,16 @@ const itThruList = (workbook) => {
           Present: a[5],
           Absent: a[6],
           "Half Days Present": a[7],
+          "Absent Days": a[8],
+          "Present Days": a[9],
+          "Half Days": a[10],
+          "WO Days": a[11],
         });
 
         workingDays = a[5] + a[6] + a[7];
       } else break;
     } else {
-      let a = eachPerson(workbook, curCell);
+      let a = eachPerson(workbook, curCell, startDate, endDate);
 
       jsonData.push({
         "Name of Person": a[0],
@@ -355,6 +389,12 @@ const itThruList = (workbook) => {
         Present: a[5],
         Absent: a[6],
         "Half Days Present": a[7],
+        "Absent Days": a[8],
+        "Present Days": a[9],
+        "Half Days": a[10],
+        "WO Days": a[11],
+        "Start Date": startDate,
+        "End Date": endDate,
       });
 
       workingDays = a[5] + a[6] + a[7];
@@ -403,7 +443,14 @@ app.post("/", (req, res) => {
     const fileName = "sample";
 
     jsonData.sort(sortByProperty("Card No"));
-
+    jsonData.forEach((v) => {
+      delete v["Absent Days"];
+      delete v["Present Days"];
+      delete v["Half Days"];
+      delete v["WO Days"];
+      delete v["Start Date"];
+      delete v["End Date"];
+    });
     XLSX.utils.sheet_add_json(datasheet, jsonData, {
       header: header,
       origin: "A3",
@@ -456,6 +503,66 @@ app.post("/", (req, res) => {
     }
 
     reportData.sort(sortByProperty("Staff Id"));
+    XLSX.utils.sheet_add_json(datasheet, reportData, {
+      header: header,
+      origin: "A3",
+    });
+    XLSX.utils.book_append_sheet(newWb, datasheet, fileName.replace("/", ""));
+
+    const binaryWorkbook = XLSX.write(newWb, {
+      type: "buffer",
+      bookType: "xlsx",
+    });
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=" + '"' + updatedFileName + '"'
+    );
+
+    res.setHeader("Content-Type", "application/vnd.ms-excel");
+
+    return res.status(200).send(binaryWorkbook);
+  } else if (req.body.upload == "NMR Report") {
+    const fileName = "sample";
+    const newWb = XLSX.utils.book_new();
+    const datasheet = XLSX.utils.aoa_to_sheet([[title]]);
+
+    let header = ["SNo", "Name & Staff No"];
+    let startDate = jsonData[0]["Start Date"];
+    let endDate = jsonData[0]["End Date"];
+    let i;
+    for (i = startDate; i <= endDate; i++) {
+      header.push(String(i));
+    }
+    header.push("Absent Days");
+    header.push("Remarks");
+    let reportData = [];
+    let p;
+    for (i = 0; i < jsonData.length; i++) {
+      let presentDays = jsonData[i]["Present Days"];
+      let absentDays = jsonData[i]["Absent Days"];
+      let halfDays = jsonData[i]["Half Days"];
+      let woDays = jsonData[i]["WO Days"];
+      let instance = {};
+      for (p = 0; p < presentDays.length; p++) {
+        instance[String(presentDays[p])] = "P";
+      }
+      for (p = 0; p < absentDays.length; p++) {
+        instance[String(absentDays[p])] = "A";
+      }
+      for (p = 0; p < halfDays.length; p++) {
+        instance[String(halfDays[p])] = "H";
+      }
+      for (p = 0; p < woDays.length; p++) {
+        instance[String(woDays[p])] = "WO";
+      }
+      instance["SNo"] = i + 1;
+      instance["Name & Staff No"] =
+        jsonData[i]["Name of Person"] + " " + jsonData[i]["Card No"];
+      instance["Absent Days"] = jsonData[i]["Absent"];
+
+      reportData.push(instance);
+    }
+
     XLSX.utils.sheet_add_json(datasheet, reportData, {
       header: header,
       origin: "A3",
